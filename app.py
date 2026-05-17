@@ -1,205 +1,186 @@
 from flask import Flask, render_template, request, send_file
-import os
-import numpy as np
-import traceback
 import tensorflow as tf
-from tensorflow.keras.preprocessing import image
+import numpy as np
+from PIL import Image
+import os
 from reportlab.pdfgen import canvas
-import datetime
-import time
 
 app = Flask(__name__)
 
-# ---------------- FOLDERS ----------------
+# ---------------- CREATE FOLDERS ----------------
 UPLOAD_FOLDER = "static/uploads"
-REPORT_FOLDER = "static/reports"
 
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(REPORT_FOLDER, exist_ok=True)
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+# ---------------- HOME PAGE ----------------
+@app.route("/")
+def home():
+    return render_template("index.html")
 
-try:
-    print("Loading Liver Model...")
-    liver_model = tf.keras.models.load_model(
-        "models/liver_model.keras",
-        compile=False
-    )
-    print("Liver Loaded")
 
-    print("Loading Kidney Model...")
-    kidney_model = tf.keras.models.load_model(
-        "models/kidney_model.keras",
-        compile=False
-    )
-    print("Kidney Loaded")
+# ---------------- PREDICT ----------------
+@app.route("/predict", methods=["POST"])
+def predict():
 
-    print("Loading GB Model...")
-    gb_model = tf.keras.models.load_model(
-        "models/gb_model.keras",
-        compile=False
-    )
-    print("GB Loaded")
+    file = request.files["file"]
+    organ = request.form["organ"]
 
-    print("Loading Pancreas Model...")
-    pancreas_model = tf.keras.models.load_model(
-        "models/pancreas_model.keras",
-        compile=False
-    )
-    print("Pancreas Loaded")
+    # Save uploaded image
+    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+    file.save(filepath)
 
-except Exception as e:
-    print("MODEL LOADING ERROR:")
-    traceback.print_exc()
+    # ---------------- IMAGE PREPROCESS ----------------
+    if organ == "Pancreas":
+        img_size = (128, 128)
+    else:
+        img_size = (224, 224)
 
-# ---------------- CLASS LABELS ----------------
-liver_classes = ["cirrhosis", "fatty_liver", "hcc", "normal"]
+    img = Image.open(filepath).convert("RGB")
+    img = img.resize(img_size)
 
-kidney_classes = ["Failure", "Normal", "Stone"]
+    img_array = np.array(img) / 255.0
+    img_array = np.expand_dims(img_array, axis=0)
 
-gb_classes = [
-    "Cholecystitis",
-    "Gallstones",
-    "Normal",
-    "Polyps_crystals"
-]
+    disease = ""
+    confidence = ""
 
-spleen_classes = ["Abnormal", "Normal"]
+    # ==================================================
+    # LIVER
+    # ==================================================
+    if organ == "Liver":
 
-# ---------------- IMAGE PREPROCESS ----------------
-def prepare_img(path, size):
+        model = tf.keras.models.load_model(
+            "models/liver_model.keras",
+            compile=False
+        )
 
-    img = image.load_img(path, target_size=size)
-    img = image.img_to_array(img)
-    img = img / 255.0
-    img = np.expand_dims(img, axis=0)
+        prediction = model.predict(img_array)
 
-    return img
+        classes = [
+            "Cirrhosis",
+            "Fatty Liver",
+            "HCC",
+            "Normal"
+        ]
 
-# ---------------- PDF GENERATION ----------------
-def generate_pdf(organ, disease):
+        pred_index = np.argmax(prediction)
+        disease = classes[pred_index]
+        confidence = round(np.max(prediction) * 100, 2)
 
-    filename = f"{REPORT_FOLDER}/report_{int(time.time())}.pdf"
+    # ==================================================
+    # KIDNEY
+    # ==================================================
+    elif organ == "Kidney":
 
-    c = canvas.Canvas(filename)
+        model = tf.keras.models.load_model(
+            "models/kidney_model.keras",
+            compile=False
+        )
 
-    date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        prediction = model.predict(img_array)
+
+        classes = [
+            "Failure",
+            "Normal",
+            "Stone"
+        ]
+
+        pred_index = np.argmax(prediction)
+        disease = classes[pred_index]
+        confidence = round(np.max(prediction) * 100, 2)
+
+    # ==================================================
+    # GALLBLADDER
+    # ==================================================
+    elif organ == "Gallbladder":
+
+        model = tf.keras.models.load_model(
+            "models/gb_model.keras",
+            compile=False
+        )
+
+        prediction = model.predict(img_array)
+
+        classes = [
+            "Cholecystitis",
+            "Gallstones",
+            "Normal",
+            "Polyps_crystals"
+        ]
+
+        pred_index = np.argmax(prediction)
+        disease = classes[pred_index]
+        confidence = round(np.max(prediction) * 100, 2)
+
+    # ==================================================
+    # PANCREAS
+    # ==================================================
+    elif organ == "Pancreas":
+
+        model = tf.keras.models.load_model(
+            "models/pancreas_model.keras",
+            compile=False
+        )
+
+        reconstructed = model.predict(img_array)
+
+        error = np.mean(np.square(img_array - reconstructed))
+
+        threshold = 0.01
+
+        if error < threshold:
+            disease = "Normal"
+        else:
+            disease = "Abnormal"
+
+        confidence = round((1 - error) * 100, 2)
+
+    # ---------------- CREATE REPORT ----------------
+    report_path = "report.pdf"
+
+    c = canvas.Canvas(report_path)
 
     c.setFont("Helvetica-Bold", 18)
-    c.drawString(120, 800, "ABDOMINAL ULTRASOUND REPORT")
+    c.drawString(180, 800, "AI Diagnostic Report")
 
-    c.setFont("Helvetica", 12)
+    c.setFont("Helvetica", 14)
+    c.drawString(100, 730, f"Organ: {organ}")
 
-    c.drawString(50, 760, f"Date: {date}")
-    c.drawString(50, 730, f"Organ: {organ}")
-    c.drawString(50, 700, f"Disease Prediction: {disease}")
+    c.drawString(100, 690, f"Prediction: {disease}")
 
-    status = "NORMAL" if disease.lower() == "normal" else "ABNORMAL"
+    c.drawString(100, 650, f"Confidence: {confidence}%")
 
-    c.drawString(50, 670, f"Status: {status}")
-
-    c.drawString(50, 620, "AI-Based Automated Report Generation System")
+    c.drawString(100, 610, "Generated using Deep Learning")
 
     c.save()
 
-    return filename
-
-# ---------------- MAIN ROUTE ----------------
-@app.route("/", methods=["GET", "POST"])
-def index():
-
-    organ = None
-    disease = None
-    img_path = None
-
-    if request.method == "POST":
-
-        organ = request.form["organ"]
-        file = request.files["image"]
-
-        if file:
-
-            filename = str(int(time.time())) + "_" + file.filename
-
-            path = os.path.join(
-                app.config["UPLOAD_FOLDER"],
-                filename
-            )
-
-            file.save(path)
-
-            img_path = path
-
-            # ---------------- LIVER ----------------
-            if organ == "Liver":
-
-                img = prepare_img(path, (224, 224))
-
-                pred = liver_model.predict(img)
-
-                disease = liver_classes[np.argmax(pred)]
-
-            # ---------------- KIDNEY ----------------
-            elif organ == "Kidney":
-
-                img = prepare_img(path, (224, 224))
-
-                pred = kidney_model.predict(img)
-
-                disease = kidney_classes[np.argmax(pred)]
-
-            # ---------------- PANCREAS ----------------
-            elif organ == "Pancreas":
-
-                img = prepare_img(path, (128, 128))
-
-                recon = pancreas_model.predict(img)
-
-                error = np.mean(np.square(img - recon))
-
-                if error < 0.09584252:
-                    disease = "Normal"
-                else:
-                    disease = "Abnormal"
-
-            # ---------------- SPLEEN ----------------
-            elif organ == "Spleen":
-
-                img = prepare_img(path, (224, 224))
-
-                pred = spleen_model.predict(img)
-
-                disease = spleen_classes[np.argmax(pred)]
-
-            # ---------------- GALLBLADDER ----------------
-            elif organ == "GB":
-
-                img = prepare_img(path, (224, 224))
-
-                pred = gb_model.predict(img)
-
-                disease = gb_classes[np.argmax(pred)]
-
+    # ---------------- SHOW RESULT ----------------
     return render_template(
-        "dashboard.html",
+        "result.html",
+        image_path=filepath,
         organ=organ,
         disease=disease,
-        img_path=img_path
+        confidence=confidence
     )
+
 
 # ---------------- DOWNLOAD REPORT ----------------
 @app.route("/download")
 def download():
 
-    organ = request.args.get("organ")
-    disease = request.args.get("disease")
+    return send_file(
+        "report.pdf",
+        as_attachment=True
+    )
 
-    pdf_path = generate_pdf(organ, disease)
 
-    return send_file(pdf_path, as_attachment=True)
-
-# ---------------- RUN APP ----------------
 # ---------------- RUN APP ----------------
 if __name__ == "__main__":
+
     port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+
+    app.run(
+        host="0.0.0.0",
+        port=port
+    )
