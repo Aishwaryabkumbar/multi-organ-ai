@@ -18,25 +18,54 @@ os.makedirs(REPORT_FOLDER, exist_ok=True)
 
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-# ---------------- MODELS ----------------
-liver_model = tf.keras.models.load_model("models/liver_model.keras")
-kidney_model = tf.keras.models.load_model("models/kidney_model.keras")
-pancreas_model = tf.keras.models.load_model("models/pancreas_model.keras")
-spleen_model = tf.keras.models.load_model("models/spleen_model.keras")
-gb_model = tf.keras.models.load_model("models/gb_model.keras")
+# ---------------- LOAD MODELS ----------------
+liver_model = tf.keras.models.load_model(
+    "models/liver_model.keras",
+    compile=False
+)
 
-# ---------------- LABELS ----------------
+kidney_model = tf.keras.models.load_model(
+    "models/kidney_model.keras",
+    compile=False
+)
+
+pancreas_model = tf.keras.models.load_model(
+    "models/pancreas_model.keras",
+    compile=False
+)
+
+spleen_model = tf.keras.models.load_model(
+    "models/spleen_model.keras",
+    compile=False
+)
+
+gb_model = tf.keras.models.load_model(
+    "models/gb_model.keras",
+    compile=False
+)
+
+# ---------------- CLASS LABELS ----------------
 liver_classes = ["cirrhosis", "fatty_liver", "hcc", "normal"]
+
 kidney_classes = ["Failure", "Normal", "Stone"]
-gb_classes = ["Cholecystitis", "Gallstones", "Normal", "Polyps_crystals"]
+
+gb_classes = [
+    "Cholecystitis",
+    "Gallstones",
+    "Normal",
+    "Polyps_crystals"
+]
+
 spleen_classes = ["Abnormal", "Normal"]
 
 # ---------------- IMAGE PREPROCESS ----------------
 def prepare_img(path, size):
+
     img = image.load_img(path, target_size=size)
     img = image.img_to_array(img)
     img = img / 255.0
     img = np.expand_dims(img, axis=0)
+
     return img
 
 # ---------------- PDF GENERATION ----------------
@@ -48,19 +77,20 @@ def generate_pdf(organ, disease):
 
     date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    c.setFont("Helvetica-Bold", 16)
+    c.setFont("Helvetica-Bold", 18)
     c.drawString(120, 800, "ABDOMINAL ULTRASOUND REPORT")
 
     c.setFont("Helvetica", 12)
+
     c.drawString(50, 760, f"Date: {date}")
-    c.drawString(50, 730, f"Organ Analyzed: {organ}")
-    c.drawString(50, 710, f"AI Diagnosis: {disease}")
+    c.drawString(50, 730, f"Organ: {organ}")
+    c.drawString(50, 700, f"Disease Prediction: {disease}")
 
     status = "NORMAL" if disease.lower() == "normal" else "ABNORMAL"
 
-    c.drawString(50, 680, f"Status: {status}")
+    c.drawString(50, 670, f"Status: {status}")
 
-    c.drawString(50, 640, "AI-Based Medical Decision Support System")
+    c.drawString(50, 620, "AI-Based Automated Report Generation System")
 
     c.save()
 
@@ -82,37 +112,65 @@ def index():
         if file:
 
             filename = str(int(time.time())) + "_" + file.filename
-            path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+
+            path = os.path.join(
+                app.config["UPLOAD_FOLDER"],
+                filename
+            )
+
             file.save(path)
 
             img_path = path
 
             # ---------------- LIVER ----------------
             if organ == "Liver":
+
                 img = prepare_img(path, (224, 224))
-                disease = liver_classes[np.argmax(liver_model.predict(img))]
+
+                pred = liver_model.predict(img)
+
+                disease = liver_classes[np.argmax(pred)]
 
             # ---------------- KIDNEY ----------------
             elif organ == "Kidney":
+
                 img = prepare_img(path, (224, 224))
-                disease = kidney_classes[np.argmax(kidney_model.predict(img))]
+
+                pred = kidney_model.predict(img)
+
+                disease = kidney_classes[np.argmax(pred)]
 
             # ---------------- PANCREAS ----------------
             elif organ == "Pancreas":
+
                 img = prepare_img(path, (128, 128))
+
                 recon = pancreas_model.predict(img)
+
                 error = np.mean(np.square(img - recon))
-                disease = "Normal" if error < 0.09584252 else "Abnormal"
+
+                if error < 0.09584252:
+                    disease = "Normal"
+                else:
+                    disease = "Abnormal"
 
             # ---------------- SPLEEN ----------------
             elif organ == "Spleen":
-                img = prepare_img(path, (224, 224))
-                disease = spleen_classes[np.argmax(spleen_model.predict(img))]
 
-            # ---------------- GB ----------------
-            elif organ == "GB":
                 img = prepare_img(path, (224, 224))
-                disease = gb_classes[np.argmax(gb_model.predict(img))]
+
+                pred = spleen_model.predict(img)
+
+                disease = spleen_classes[np.argmax(pred)]
+
+            # ---------------- GALLBLADDER ----------------
+            elif organ == "GB":
+
+                img = prepare_img(path, (224, 224))
+
+                pred = gb_model.predict(img)
+
+                disease = gb_classes[np.argmax(pred)]
 
     return render_template(
         "dashboard.html",
@@ -128,10 +186,10 @@ def download():
     organ = request.args.get("organ")
     disease = request.args.get("disease")
 
-    file_path = generate_pdf(organ, disease)
+    pdf_path = generate_pdf(organ, disease)
 
-    return send_file(file_path, as_attachment=True)
+    return send_file(pdf_path, as_attachment=True)
 
-# ---------------- RUN ----------------
+# ---------------- RUN APP ----------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
