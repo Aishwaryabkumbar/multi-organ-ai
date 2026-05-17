@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Medical AI Dashboard</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="card">
+
+        <h1>🫀 Abdominal Ultrasound AI System</h1>
+
+        <p>Deep Learning-Based Automated Report Generation</p>
+
+        <!-- ================= FORM ================= -->
+        <form method="POST" enctype="multipart/form-data">
+
+            <label><b>Select Organ</b></label>
+            <select name="organ" required>
+                <option value="">-- Choose Organ --</option>
+                <option value="Liver">Liver</option>
+                <option value="Kidney">Kidney</option>
+                <option value="Pancreas">Pancreas</option>
+                <option value="Spleen">Spleen</option>
+                <option value="GB">Gallbladder</option>
+            </select>
+
+            <label><b>Upload Ultrasound Image</b></label>
+            <input type="file" name="image" required>
+
+            <button type="submit">🔍 Predict</button>
+
+        </form>
+
+        <!-- ================= RESULT SECTION ================= -->
+        {% if organ and disease %}
+
+        <div class="result">
+
+            <h2>📊 Prediction Result</h2>
+
+            <p><b>Organ:</b> {{ organ }}</p>
+
+            {% if disease == "Normal" %}
+                <p style="color:green;"><b>Disease:</b> {{ disease }}</p>
+            {% else %}
+                <p style="color:red;"><b>Disease:</b> {{ disease }}</p>
+            {% endif %}
+
+            {% if img_path %}
+                <img src="{{ img_path }}" width="250">
+            {% endif %}
+
+        </div>
+
+        <!-- ================= DOWNLOAD BUTTON ================= -->
+        <div style="margin-top:15px;">
+
+            <a href="/download?organ={{ organ }}&disease={{ disease }}&img={{ img_path }}">
+
+                <button style="background:darkgreen;">
+                    📄 Download PDF Report
+                </button>
+
+            </a>
+
+        </div>
+
+        {% endif %}
+
+    </div>
+
+</div>
+
+</body>
+</html>
