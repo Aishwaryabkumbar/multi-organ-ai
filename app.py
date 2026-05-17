@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, send_file
 import os
 import numpy as np
+import traceback
 import tensorflow as tf
 from tensorflow.keras.preprocessing import image
 from reportlab.pdfgen import canvas
@@ -18,31 +19,38 @@ os.makedirs(REPORT_FOLDER, exist_ok=True)
 
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-# ---------------- LOAD MODELS ----------------
-liver_model = tf.keras.models.load_model(
-    "models/liver_model.keras",
-    compile=False
-)
+try:
+    print("Loading Liver Model...")
+    liver_model = tf.keras.models.load_model(
+        "models/liver_model.keras",
+        compile=False
+    )
+    print("Liver Loaded")
 
-kidney_model = tf.keras.models.load_model(
-    "models/kidney_model.keras",
-    compile=False
-)
+    print("Loading Kidney Model...")
+    kidney_model = tf.keras.models.load_model(
+        "models/kidney_model.keras",
+        compile=False
+    )
+    print("Kidney Loaded")
 
-pancreas_model = tf.keras.models.load_model(
-    "models/pancreas_model.keras",
-    compile=False
-)
+    print("Loading GB Model...")
+    gb_model = tf.keras.models.load_model(
+        "models/gb_model.keras",
+        compile=False
+    )
+    print("GB Loaded")
 
-spleen_model = tf.keras.models.load_model(
-    "models/spleen_model.keras",
-    compile=False
-)
+    print("Loading Pancreas Model...")
+    pancreas_model = tf.keras.models.load_model(
+        "models/pancreas_model.keras",
+        compile=False
+    )
+    print("Pancreas Loaded")
 
-gb_model = tf.keras.models.load_model(
-    "models/gb_model.keras",
-    compile=False
-)
+except Exception as e:
+    print("MODEL LOADING ERROR:")
+    traceback.print_exc()
 
 # ---------------- CLASS LABELS ----------------
 liver_classes = ["cirrhosis", "fatty_liver", "hcc", "normal"]
